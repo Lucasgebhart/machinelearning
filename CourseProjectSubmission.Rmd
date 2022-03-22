@@ -1,0 +1,108 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Lucas Gebhart"
+date: "3/22/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(caret)
+library(AppliedPredictiveModeling)
+library(rpart)
+library(gbm)
+library(randomForest)
+library(e1071)
+library(knitr)
+```
+
+## Machine Learning Course Project Prediction Exercise
+
+This project will use the training and test data from http://groupware.les.inf.puc-rio.br/har. It consists of a number of test subjects performing exercises correctly or incorrectly. We will use this data to test prediction models. The training data consists of 19622 rows with 160 variables. The test set has 20 observations with the same variables
+
+```{r dataLoad, echo= FALSE}
+trainset <- read.csv("C:/Users/lucas.gebhart/Desktop/machinelearning/pml-training.csv")
+testset <- read.csv("C:/Users/lucas.gebhart/Desktop/machinelearning/pml-testing.csv")
+dim(trainset)
+dim(testset)
+```
+## Pre Processing
+As we look at the data, we see a significant number of NA observations that will create issues with our algorithm. I am going to eliminate columns with greater than 90% NA. I am also going to eliminate the subject identification and time variables that make up the first seven columns of the data. Getting rid of NAs reduces us to 93 columns. Eliminating background information brings us to 86.
+```{r preproc, echo = FALSE}
+trainset <- trainset[,colMeans(is.na(trainset)) < .9]
+dim(trainset)
+trainsmaller <-trainset[,-c(1:7)]
+dim(trainsmaller)
+
+```
+
+## Further Processing
+After that previous step, I thought that I was ready to get going on building models, but when running them, I was getting errors for a number of low or zero variance variables. So I'm going to eliminate them as well. This brings us down to 53 variables.
+
+I'll go ahead and break my data into training and validation at this stage so that I have a dataset to predict on after training other than the testing data that is very small. So my training is 13737 obvervations, leaving the other 5885 for validation.
+```{r novar, echo= FALSE}
+novar <-nearZeroVar(trainsmaller)
+trainsmaller <- trainsmaller[,-novar]
+dim(trainsmaller)
+intraining <- createDataPartition(y= trainsmaller$classe, p= .7, list = FALSE )
+train <- trainsmaller[intraining,]
+validate <-trainsmaller[-intraining,]
+dim(train)
+dim(validate)
+train$classe <- as.factor(train$classe)
+validate$classe <- as.factor(validate$classe)
+```
+## Build some models
+
+I had planned to build the RandomForest, Support Vector Machine, and the Decision Tree (rPart) models for the data using Caret. However, a caret update renders that platform less useful for classification. More, teasing the data from factor into Bernoulli (0 and 1) is laborious and, in this case, with 6 levels, impossible. So I skipped that and changed the classe variable into a factor variable to let the rest of the algorithms work properly.
+
+```{r models}
+mod_rpart <- rpart(classe ~ . , data = train, method = "class") 
+rpartpredict <- predict(mod_rpart, validate, type = "class")
+cm_rpart<- confusionMatrix(validate$classe, rpartpredict)
+
+
+mod_rf <- randomForest(classe ~ . , data = train) 
+rf_predict <- predict(mod_rf, validate, type = "class")
+cm_rf <- confusionMatrix(validate$classe, rf_predict)
+
+
+mod_svm <- svm(classe ~ ., data = train)
+svmpredict <- predict(mod_svm, validate)
+cm_svm <- confusionMatrix(validate$classe, svmpredict)
+
+
+
+```
+
+## Confusion Matrices
+To make this easier to read, I've located each Confusion Matrix here by name and then made a quick print of just the accuracy rating. From this, we can see that the random forest model does the best job predicting based on our testing and validation data.
+```{r CM, echo = TRUE}
+print(cm_rpart)
+print(cm_rf)
+print(cm_svm)
+print(cm_rpart$overall[1])
+print(cm_rf$overall[1])
+print(cm_svm$overall[1])
+
+```
+## Model Selection and prediction
+Since Random Forest did the best job predicting and was higher than 95% accuracy, I've decided not to combine models, So I'll predict the category of the test data here using the rf model.
+```{r}
+bestpredict <- predict(mod_rf, testset)
+print(bestpredict)
+```
+
+
+## Including Plots
+
+Here are some fancy graphs that I haven't tried much to improve. For RF, we can see that the first 30 or so trees do all of the work. We should stop it there for efficiency.
+
+```{r pressure, echo=FALSE}
+plot(mod_rf)
+```
+For the decision tree, we can see each split along the way as it tries to categorize. Stronger predictors are at the top.
+```{r plot2, echo= FALSE}
+plot(mod_rpart)
+```
+
